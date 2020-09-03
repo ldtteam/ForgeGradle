@@ -62,6 +62,7 @@ public class DependencyRemapper {
     }
 
     private ExternalModuleDependency remapExternalModule(ExternalModuleDependency dependency) {
+        DeobfConfigManager.getInstance().addPomArtifact(project, dependency);
         ExternalModuleDependency newDep = dependency.copy();
         mappingListeners.add(m -> newDep.version(v -> v.strictly(newDep.getVersion() + "_mapped_" + m)));
         return newDep;

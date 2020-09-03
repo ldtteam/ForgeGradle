@@ -22,8 +22,10 @@ package net.minecraftforge.gradle.userdev;
 
 import groovy.lang.Closure;
 import groovy.lang.GroovyObjectSupport;
+import net.minecraftforge.gradle.userdev.util.DeobfConfigManager;
 import net.minecraftforge.gradle.userdev.util.DependencyRemapper;
 import org.gradle.api.Project;
+import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.Dependency;
 
 public class DependencyManagementExtension extends GroovyObjectSupport {
@@ -47,4 +49,21 @@ public class DependencyManagementExtension extends GroovyObjectSupport {
 
         return remapper.remap(baseDependency);
     }
+
+    public void markDeobf(Configuration deobfObject) {
+        markDeobf(
+          deobfObject,
+          project.getConfigurations().maybeCreate("compile")
+        );
+    }
+
+    public void markDeobf(Configuration deobfObject, Configuration targetObject) {
+        DeobfConfigManager.getInstance().addDeobfConfiguration(
+          project,
+          targetObject,
+          remapper,
+          deobfObject
+        );
+    }
+
 }

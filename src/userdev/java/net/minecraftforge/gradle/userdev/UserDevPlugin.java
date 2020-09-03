@@ -30,6 +30,7 @@ import net.minecraftforge.gradle.mcp.MCPRepo;
 import net.minecraftforge.gradle.mcp.task.DownloadMCPMappingsTask;
 import net.minecraftforge.gradle.mcp.task.GenerateSRG;
 import net.minecraftforge.gradle.userdev.tasks.RenameJarInPlace;
+import net.minecraftforge.gradle.userdev.util.DeobfConfigManager;
 import net.minecraftforge.gradle.userdev.util.DeobfuscatingRepo;
 import net.minecraftforge.gradle.userdev.util.Deobfuscator;
 import net.minecraftforge.gradle.userdev.util.DependencyRemapper;
@@ -39,7 +40,9 @@ import org.gradle.api.artifacts.Dependency;
 import org.gradle.api.artifacts.DependencySet;
 import org.gradle.api.artifacts.ExternalModuleDependency;
 import org.gradle.api.logging.Logger;
+import org.gradle.api.plugins.Convention;
 import org.gradle.api.plugins.JavaPluginConvention;
+import org.gradle.api.tasks.SourceSetContainer;
 import org.gradle.api.tasks.TaskProvider;
 import org.gradle.api.tasks.bundling.Jar;
 import org.gradle.api.tasks.compile.JavaCompile;
@@ -53,8 +56,8 @@ import java.util.concurrent.TimeUnit;
 
 public class UserDevPlugin implements Plugin<Project> {
     private static String MINECRAFT = "minecraft";
-    private static String DEOBF = "deobf";
-    public static String OBF = "__obfuscated";
+    public static final String DEOBF = "Deobf";
+    public static final String OBF = "__obfuscated";
 
     @Override
     public void apply(@Nonnull Project project) {
@@ -62,12 +65,17 @@ public class UserDevPlugin implements Plugin<Project> {
 
         @SuppressWarnings("unused")
         final Logger logger = project.getLogger();
+
         final UserDevExtension extension = project.getExtensions().create(UserDevExtension.EXTENSION_NAME, UserDevExtension.class, project);
 
         if (project.getPluginManager().findPlugin("java") == null) {
             project.getPluginManager().apply("java");
         }
         final File nativesFolder = project.file("build/natives/");
+
+        Convention convention = project.getConvention();
+        JavaPluginConvention javaPluginConvention = convention.getPlugin(JavaPluginConvention.class);
+        SourceSetContainer sourceSets = javaPluginConvention.getSourceSets();
 
         NamedDomainObjectContainer<RenameJarInPlace> reobf = project.container(RenameJarInPlace.class, new NamedDomainObjectFactory<RenameJarInPlace>() {
             @Override
@@ -104,10 +112,12 @@ public class UserDevPlugin implements Plugin<Project> {
         project.getExtensions().add("reobf", reobf);
 
         Configuration minecraft = project.getConfigurations().maybeCreate(MINECRAFT);
-        Configuration compile = project.getConfigurations().maybeCreate("compile");
-        compile.extendsFrom(minecraft);
 
-
+        sourceSets.forEach(sourceSet -> {
+            final String compileConfiguration = sourceSet.getCompileClasspathConfigurationName();
+            Configuration sourceSetCompileConfiguration = project.getConfigurations().maybeCreate(compileConfiguration);
+            sourceSetCompileConfiguration.extendsFrom(minecraft);
+        });
         //Let gradle handle the downloading by giving it a configuration to dl. We'll focus on applying mappings to it.
         Configuration internalObfConfiguration = project.getConfigurations().maybeCreate(OBF);
         internalObfConfiguration.setDescription("Generated scope for obfuscated dependencies");
@@ -119,20 +129,16 @@ public class UserDevPlugin implements Plugin<Project> {
         DependencyRemapper remapper = new DependencyRemapper(project, deobfuscator);
         project.getExtensions().create(DependencyManagementExtension.EXTENSION_NAME, DependencyManagementExtension.class, project, remapper);
 
-        //TODO remove this block in FG 3.1
-        {
-            Configuration deobfConfiguration = project.getConfigurations().maybeCreate(DEOBF);
+        //This injects all required configurations and links them up to their compile, runtime etc parents.
+        DeobfConfigManager.getInstance().onAppliedToProject(project, remapper);
 
-            project.afterEvaluate(p -> {
-                DependencySet legacyDeps = deobfConfiguration.getDependencies();
-                if (!legacyDeps.isEmpty()) {
-                    logger.warn("deobf dependency configuration is deprecated. Please use deobfuscated dependencies in standard configurations");
-                    logger.warn("For example, `api fg.deobf(\"your:dependency\")`. More about available configurations: https://docs.gradle.org/current/userguide/java_library_plugin.html#sec:java_library_configurations_graph");
-                }
-
-                legacyDeps.forEach(d -> p.getDependencies().add("compile", remapper.remap(d)));
-            });
-        }
+        //We add the normal deobf as a legacy configuration, use compileDeobf as new alternative
+        DeobfConfigManager.getInstance().addDeobfConfiguration(
+          project,
+          project.getConfigurations().maybeCreate("compile"),
+          remapper,
+          DEOBF.toLowerCase()
+        );
 
         TaskProvider<DownloadMavenArtifact> downloadMcpConfig = project.getTasks().register("downloadMcpConfig", DownloadMavenArtifact.class);
         TaskProvider<ExtractMCPData> extractSrg = project.getTasks().register("extractSrg", ExtractMCPData.class);
