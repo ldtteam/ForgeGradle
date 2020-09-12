@@ -58,7 +58,7 @@ public class DependencyManagementExtension extends GroovyObjectSupport {
     }
 
     public void markDeobf(Configuration deobfObject, Configuration targetObject) {
-        DeobfConfigManager.getInstance().addDeobfConfiguration(
+        DeobfConfigManager.getInstance().startTrackingDeobfuscationConfiguration(
           project,
           targetObject,
           remapper,

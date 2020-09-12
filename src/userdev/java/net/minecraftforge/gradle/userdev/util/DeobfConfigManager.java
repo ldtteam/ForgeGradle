@@ -18,6 +18,12 @@ import org.gradle.api.tasks.SourceSetContainer;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * This class functions a central manager for handling deobfuscation configurations.
+ *
+ * In particular this manages the internal obfuscated dependency as well as adding
+ * new deobfuscation source configurations to a project.
+ */
 public class DeobfConfigManager
 {
 
@@ -34,6 +40,24 @@ public class DeobfConfigManager
     {
     }
 
+    /**
+     * This method should be invoked by ForgeGradle to make this manager handle a given project for a given remapper.
+     * It should only be invoked once.
+     *
+     * This method registers several different additional configurations, for every sourceset it register a deobf source variant for the following configurations:
+     *   - compile
+     *   - runtime
+     *   - api
+     *   - implementation
+     *   - compileOnly
+     *   - runtimeOnly
+     *
+     * The actual name of the configuration is dependent on the actual source set, and might vary, but for all configurations the following schema is followed:
+     * When the configuration that is supposed to be used as target is named 'X' then the deobfuscation source config is named 'XDeobf'.
+     *
+     * @param project The project to apply the manager to.
+     * @param remapper The remapper used in the project.
+     */
     public void onAppliedToProject(final Project project, final DependencyRemapper remapper) {
         addDeobfConfiguration(project, remapper);
 
@@ -53,6 +77,21 @@ public class DeobfConfigManager
         });
     }
 
+    /**
+     * This method registers several different additional configurations, for every sourceset it register a deobf source variant for the following configurations:
+     *   - compile
+     *   - runtime
+     *   - api
+     *   - implementation
+     *   - compileOnly
+     *   - runtimeOnly
+     *
+     * The actual name of the configuration is dependent on the actual source set, and might vary, but for all configurations the following schema is followed:
+     * When the configuration that is supposed to be used as target is named 'X' then the deobfuscation source config is named 'XDeobf'.
+     *
+     * @param project The project to add the configuraitons to.
+     * @param remapper The remapper used in the project.
+     */
     public void addDeobfConfiguration(final Project project,
       final DependencyRemapper remapper) {
         Convention convention = project.getConvention();
@@ -65,6 +104,22 @@ public class DeobfConfigManager
         }
     }
 
+    /**
+     * This method registers several different additional configurations, for a given sourceset it register a deobf source variant for the following configurations:
+     *   - compile
+     *   - runtime
+     *   - api
+     *   - implementation
+     *   - compileOnly
+     *   - runtimeOnly
+     *
+     * The actual name of the configuration is dependent on the actual source set, and might vary, but for all configurations the following schema is followed:
+     * When the configuration that is supposed to be used as target is named 'X' then the deobfuscation source config is named 'XDeobf'.
+     *
+     * @param project The project to add the configurations to.
+     * @param sourceSet The sourceSet to add the configurations for.
+     * @param remapper The remapper used in the project.
+     */
     public void addDeobfConfiguration(final Project project,
       final SourceSet sourceSet,
       final DependencyRemapper remapper) {
@@ -107,6 +162,16 @@ public class DeobfConfigManager
         );
     }
 
+    /**
+     * This method registers a single deobfuscation source configuration, given a target configuration.
+     *
+     * The actual name of the configuration is dependent on the actual source set, and might vary, but for all configurations the following schema is followed:
+     * When the configuration that is supposed to be used as target is named 'X' then the deobfuscation source config is named 'XDeobf'.
+     *
+     * @param project The project to add the configuration to.
+     * @param target The target configuration to add the deobfed dependencies to.
+     * @param remapper The remapper used in the project.
+     */
     public void addDeobfConfiguration(final Project project,
       final Configuration target,
       final DependencyRemapper remapper) {
@@ -114,27 +179,43 @@ public class DeobfConfigManager
         addDeobfConfiguration(project, target, remapper, newDeobfName);
     }
 
+    /**
+     * This method registers a single deobfuscation source configuration, given a target configuration.
+     * The name of the deobfuscation source configuration is passed as a parameter.
+     *
+     * @param project The project to add the configuration to.
+     * @param target The target configuration to add the deobfed dependencies to.
+     * @param remapper The remapper used in the project.
+     * @param name The name of the source deobfuscation configuration.
+     */
     public void addDeobfConfiguration(final Project project, final Configuration target, final DependencyRemapper remapper, final String name)
     {
         final Configuration deobfConfig = project.getConfigurations().maybeCreate(name);
-        addDeobfConfiguration(project, target, remapper, deobfConfig);
+        startTrackingDeobfuscationConfiguration(project, target, remapper, deobfConfig);
     }
 
-    public void addDeobfConfiguration(final Project project, final Configuration target, final DependencyRemapper remapper, final Configuration deobfConfig)
+    /**
+     * This method starts tracking a given configuration as a deobfuscation source.
+     *
+     * @param project The project to add the configuration to.
+     * @param target The target configuration to add the deobfed dependencies to.
+     * @param remapper The remapper used in the project.
+     * @param deobfConfig The source deobfuscation configuration.
+     */
+    public void startTrackingDeobfuscationConfiguration(final Project project, final Configuration target, final DependencyRemapper remapper, final Configuration deobfConfig)
     {
-        final Configuration internalObfConfig = project.getConfigurations().maybeCreate(UserDevPlugin.OBF);
         deobfConfigurationsPerProject.computeIfAbsent(project, (p) -> Sets.newConcurrentHashSet()).add(new DeobfuscationConfigurationMarker(deobfConfig, target, remapper));
     }
 
+    /**
+     * This
+     * @param project
+     * @param moduleDependency
+     */
     public void addPomArtifact(
       final Project project,
       final ExternalModuleDependency moduleDependency) {
-        if (moduleDependency.getArtifacts().isEmpty()) {
-            project.getLogger().error(String.format("Could not add POM artifact for dependency. The dependency: %s:%s:%s does not contain any artifacts.",
-              moduleDependency.getGroup(),
-              moduleDependency.getName(),
-              moduleDependency.getVersion()));
-        } else if (moduleDependency.getArtifacts().size() == 1) {
+        if (moduleDependency.getArtifacts().size() == 1) {
             addPomArtifactFrom(
               moduleDependency,
               moduleDependency.getArtifacts().iterator().next()
