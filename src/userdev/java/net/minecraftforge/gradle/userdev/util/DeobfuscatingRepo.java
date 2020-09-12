@@ -88,8 +88,35 @@ public class DeobfuscatingRepo extends BaseRepo {
         Optional<File> orig = findArtifactFile(artifact);
 
         if (!orig.isPresent()) {
-            return null;
-        }
+            project.getLogger().warn("Missing original POM file. Attempting Query: " + artifact.toString());
+            orig =  project.getDependencies()
+                      .createArtifactResolutionQuery()
+                      .forComponents(getDependencies(artifact).flatMap(dep -> dep.getAllModuleArtifacts().stream()).map(ResolvedArtifact::getId).toArray(ComponentIdentifier[]::new))
+                      .withArtifacts(MavenModule.class, MavenPomArtifact.class)
+                      .execute()
+                      .getResolvedComponents()
+                      .stream()
+                      .map(componentArtifactsResult -> {
+                          project.getLogger().info("Found component artifact result: " + componentArtifactsResult.getId().getDisplayName());
+                          return componentArtifactsResult;
+                      })
+                      .flatMap(res -> res.getArtifacts(MavenPomArtifact.class).stream())
+                      .map(artifactResult -> {
+                          project.getLogger().info("Found artifact result: " + artifactResult.getId().getDisplayName());
+                          return artifactResult;
+                      })
+                      .filter(ResolvedArtifactResult.class::isInstance)
+                      .map(ResolvedArtifactResult.class::cast)
+                      .map(res -> {
+                          project.getLogger().info("Found file: " + res.getFile().getAbsolutePath());
+                          return res.getFile();
+                      })
+                      .findFirst();
+
+            if (!orig.isPresent()) {
+                project.getLogger().warn("Failed to find POM for: " + artifact.toString());
+                return null;
+            }
 
         File origFile = orig.get();
 
